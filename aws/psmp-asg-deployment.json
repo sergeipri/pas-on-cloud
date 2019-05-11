@@ -1,0 +1,425 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Resources": {
+        "PSMPASGScaleInPolicy": {
+            "Type": "AWS::AutoScaling::ScalingPolicy",
+            "Properties": {
+                "AdjustmentType": "ChangeInCapacity",
+                "AutoScalingGroupName": {
+                    "Ref": "PSMPAsg"
+                },
+                "PolicyType": "SimpleScaling",
+                "Cooldown": "300",
+                "ScalingAdjustment": "-1"
+            }
+        },
+        "PSMPASGCPUAlarmLow": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "EvaluationPeriods": "1",
+                "Statistic": "Average",
+                "Threshold": "70",
+                "AlarmDescription": "Alarm if CPU getting lower",
+                "Period": "300",
+                "AlarmActions": [
+                    {
+                        "Ref": "PSMPASGScaleInPolicy"
+                    }
+                ],
+                "Namespace": "AWS/EC2",
+                "ComparisonOperator": "LessThanOrEqualToThreshold",
+                "MetricName": "CPUUtilization",
+                "Dimensions": [
+                  {
+                    "Name": "AutoScalingGroupName",
+                    "Value": {
+                      "Ref": "PSMPAsg"
+                    }
+                  }
+                ]
+            }
+        },
+        "PSMPASGScaleOutPolicy": {
+            "Type": "AWS::AutoScaling::ScalingPolicy",
+            "Properties": {
+                "AdjustmentType": "ChangeInCapacity",
+                "AutoScalingGroupName": {
+                    "Ref": "PSMPAsg"
+                },
+                "PolicyType": "StepScaling",
+                "MetricAggregationType": "Average",
+                "EstimatedInstanceWarmup": "300",
+                "StepAdjustments": [
+                    {
+                        "MetricIntervalLowerBound": "0",
+                        "MetricIntervalUpperBound": "10",
+                        "ScalingAdjustment": "1"
+                    },
+                    {
+                        "MetricIntervalLowerBound": "10",
+                        "MetricIntervalUpperBound": "20",
+                        "ScalingAdjustment": "2"
+                    },
+                    {
+                        "MetricIntervalLowerBound": "20",
+                        "ScalingAdjustment": "3"
+                    }
+                ]
+            }
+        },
+        "PSMPCPUAlarmHigh": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "EvaluationPeriods": "1",
+                "Statistic": "Average",
+                "Threshold": "75",
+                "AlarmDescription": "Alarm if CPU getting lower",
+                "Period": "300",
+                "AlarmActions": [
+                    {
+                        "Ref": "PSMPASGScaleOutPolicy"
+                    }
+                ],
+                "Namespace": "AWS/EC2",
+                "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+                "MetricName": "CPUUtilization",
+                "Dimensions": [
+                  {
+                    "Name": "AutoScalingGroupName",
+                    "Value": {
+                      "Ref": "PSMPAsg"
+                    }
+                  }
+                ]
+            }
+        },
+        "PSMPASGLaunchTemplate": {
+            "Type": "AWS::EC2::LaunchTemplate",
+            "Properties": {
+                "LaunchTemplateName": "psmp-launch-template",
+                "LaunchTemplateData": {
+                    "ImageId": {
+                        "Fn::FindInMap": [
+                            "RegionMap",
+                            {
+                                "Ref": "AWS::Region"
+                            },
+                            "PSMP"
+                        ]
+                    },
+                    "InstanceType": "t2.micro",
+                    "SecurityGroupIds": [
+                        "sg-0b8456550efc7b93c"
+                    ],
+                    "UserData": {
+                        "Fn::Base64": {
+                            "Fn::Join": [
+                                "",
+                                [
+                                    "#!/bin/bash \n",
+                                    "chmod 700 /root/CD-Image/register_and_activation.sh \n",
+                                    " temppassword=",
+                                    {
+                                        "Ref": "VaultAdminPassword"
+                                    },
+                                    "\n",
+                                    " /opt/CARKpsmp/bin/createcredfile /root/CD-Image/user.cred Password -Username ",
+                                    {
+                                        "Ref": "VaultAdminUser"
+                                    },
+                                    " -Password $temppassword -Hostname\n",
+                                    " echo Credentials file successfully created.\n",
+                                    " /root/CD-Image/register_and_activation.sh /root/CD-Image/user.cred ",
+                                    {
+                                        "Ref": "VaultPrivateIP"
+                                    },
+                                    " $(curl http://169.254.169.254/latest/meta-data/instance-id) yes\n"
+                                ]
+                            ]
+                        }
+                    },
+                    "CreditSpecification": {
+                        "CpuCredits": "standard"
+                    },
+                    "KeyName": {
+                        "Ref": "KeyName"
+                    }
+                }
+            }
+        },
+        "PSMPAsg": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Properties": {
+                "AutoScalingGroupName": "psmp-auto-scale-group",
+                "LaunchTemplate": {
+                    "LaunchTemplateId": {
+                        "Ref": "PSMPASGLaunchTemplate"
+                    },
+                    "Version": {
+                        "Fn::GetAtt": [
+                            "PSMPASGLaunchTemplate",
+                            "LatestVersionNumber"
+                        ]
+                    }
+                },
+                "TargetGroupARNs":[
+                    "arn:aws:elasticloadbalancing:us-west-1:138339392836:targetgroup/psmpTargetGroup/9b31ba64c0a3fc14"
+                ],
+                "DesiredCapacity": {
+                    "Ref": "DesiredCapacity"
+                },
+                "MaxSize": {
+                    "Ref": "MaxSize"
+                },
+                "MinSize": {
+                    "Ref": "MinSize"
+                },
+                "VPCZoneIdentifier": {
+                    "Ref": "ComponentInstanceSubnetId"
+                }
+            }
+        }
+    },
+    "Parameters": {
+        "EULA": {
+            "Type": "String",
+            "Description": "I have read and agree to the Terms and Conditions.",
+            "AllowedValues": [
+                "Accept",
+                "Decline"
+            ],
+            "Default": "Decline"
+        },
+        "KeyName": {
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "Description": "Select an existing Key Pair from your AWS account.",
+            "ConstraintDescription": "Can contain only ASCII characters."
+        },
+        "VaultPrivateIP": {
+            "Type": "String",
+            "Description": "Enter the IP of the Vault instance."
+        },
+        "DRPrivateIP": {
+            "Type": "String",
+            "Description": "Enter the IP of the Vault DR instance. (Optional)"
+        },
+        "VaultAdminUser": {
+            "Type": "String",
+            "Description": "Enter the Administrator Vault user.",
+            "Default": "Administrator",
+            "MinLength": 8
+        },
+        "VaultAdminPassword": {
+            "Type": "String",
+            "Description": "Enter a password for the Vault Administrator user.",
+            "NoEcho": true,
+            "MinLength": 8
+        },
+        "ComponentInstanceName": {
+            "Type": "String",
+            "Description": "Enter a name for the PAS Component instance.",
+            "Default": "Components"
+        },
+        "ComponentHostName": {
+            "Type": "String",
+            "Description": "Enter the host name for the PAS Component instance."
+        },
+        "ComponentInstanceType": {
+            "Type": "String",
+            "Description": "Select the instance type of the Component instance.",
+            "AllowedValues": [
+                "m4.large",
+                "m4.xlarge",
+                "m4.2xlarge",
+                "m4.4xlarge"
+            ],
+            "Default": "m4.large"
+        },
+        "ComponentInstanceSecurityGroups": {
+            "Type": "List<AWS::EC2::SecurityGroup::Id>",
+            "Description": "Assign Security Groups to the Component instance."
+        },
+        "ComponentInstanceSubnetId": {
+            "Type": "List<AWS::EC2::Subnet::Id>",
+            "Description": "Select the Subnet Id where the Component instance will reside."
+        },
+        "PVWAHostName": {
+            "Type": "String",
+            "Description": "IP or FQDN of PVWA server"
+        },
+        "DesiredCapacity": {
+            "Type": "Number",
+            "Description": "Desired capacity of Auto Scale Group"
+        },
+        "MinSize": {
+            "Type": "Number",
+            "Description": "Minimum size of Auto Scale Group"
+        },
+        "MaxSize": {
+            "Type": "Number",
+            "Description": "Maximum size of Auto Scale Group"
+        },
+        "AmiID": {
+            "Type": "AWS::EC2::Image::Id",
+            "Description": "AMI ID for Auto Scale Group"
+        }
+    },
+    "Conditions": {
+        "EULACondition": {
+            "Fn::Equals": [
+                "Accept",
+                {
+                    "Ref": "EULA"
+                }
+            ]
+        }
+    },
+    "Metadata": {
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "General parameters"
+                    },
+                    "Parameters": [
+                        "EULA",
+                        "KeyName"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Vault and DR information"
+                    },
+                    "Parameters": [
+                        "VaultPrivateIP",
+                        "DRPrivateIP",
+                        "VaultAdminUser",
+                        "VaultAdminPassword"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Component configuration"
+                    },
+                    "Parameters": [
+                        "ComponentInstanceName",
+                        "ComponentInstanceType",
+                        "ComponentInstanceSecurityGroups",
+                        "ComponentInstanceSubnetId",
+                        "LoadBalancerIP"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Auto Scale Group configuration"
+                    },
+                    "Parameters": [
+                        "DesiredCapacity",
+                        "MinSize",
+                        "MaxSize",
+                        "AmiID"
+                    ]
+                }
+            ],
+            "ParameterLabels": {
+                "EULA": {
+                    "default": "License Agreement"
+                },
+                "KeyName": {
+                    "default": "Key Pair"
+                },
+                "VaultPrivateIP": {
+                    "default": "Vault Private IP"
+                },
+                "DRPrivateIP": {
+                    "default": "Vault DR Private IP"
+                },
+                "VaultAdminUser": {
+                    "default": "Vault Admin User"
+                },
+                "VaultAdminPassword": {
+                    "default": "Vault Admin Password"
+                },
+                "ComponentInstanceName": {
+                    "default": "Component Instance Name"
+                },
+                "ComponentHostName": {
+                    "default": "Component Host Name"
+                },
+                "ComponentInstanceType": {
+                    "default": "Component Instance Type"
+                },
+                "ComponentInstanceSecurityGroups": {
+                    "default": "Component Instance Security Groups"
+                },
+                "ComponentInstanceSubnetId": {
+                    "default": "Component Instance Subnet Id"
+                },
+                "PVWAHostName": {
+                    "default": "PVWA FQDN (Optional)"
+                },
+                "DesiredCapacity": {
+                    "default": "Desired Capacity Of Auto Scale Group"
+                },
+                "MinSize": {
+                    "default": "Minimum Size Of Auto Scale Group"
+                },
+                "MaxSize": {
+                    "default": "Maximum Size Of Auto Scale Group"
+                },
+                "AmiID": {
+                    "default": "AMI ID Of Auto Scale Group"
+                }
+            }
+        }
+    },
+    "Mappings": {
+        "RegionMap": {
+            "us-east-1": {
+                "PSMP": "ami-0fb8ac4ef13225047"
+            },
+            "us-east-2": {
+                "PSMP": "ami-0c20cbf0021eeddfa"
+            },
+            "eu-west-2": {
+                "PSMP": "ami-06ff76a43e0f1e659"
+            },
+            "us-west-1": {
+                "PSMP": "ami-079c6f86eaaa21956"
+            },
+            "us-west-2": {
+                "PSMP": "ami-043f98b5d1d1fa0b5"
+            },
+            "ca-central-1": {
+                "PSMP": "ami-0ae8477d9339243f7"
+            },
+            "eu-west-1": {
+                "PSMP": "ami-0de091c7e47fb5123"
+            },
+            "eu-central-1": {
+                "PSMP": "ami-0ec69297cc32195f2"
+            },
+            "ap-southeast-1": {
+                "PSMP": "ami-04a54577464646bb3"
+            },
+            "ap-southeast-2": {
+                "PSMP": "ami-057ba59ad2c8d2f73"
+            },
+            "ap-northeast-2": {
+                "PSMP": "ami-0bffe43bca05042c8"
+            },
+            "ap-northeast-1": {
+                "PSMP": "ami-09732d42317e4636f"
+            },
+            "ap-south-1": {
+                "PSMP": "ami-07d62c13482f612e1"
+            },
+            "sa-east-1": {
+                "PSMP": "ami-00572bcf418094156"
+            },
+            "us-gov-west-1": {
+                "PSMP": "ami-815f3ee0"
+            }
+        }
+    }
+}
