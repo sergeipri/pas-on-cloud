@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: This template handles the deployment of CyberArk DR Vault to an existing network infrastructure
+Description: This template handles the deployment of CyberArk Primary Vault to an existing network infrastructure
 Resources:
   LogGroup:
     Type: AWS::Logs::LogGroup
@@ -589,7 +589,7 @@ Metadata:
           - LicenseFile
           - RecoveryPublicKey
       - Label:
-          default: DR Vault information
+          default: Primary Vault and DR information
         Parameters:
           - VaultPrivateIP
           - VaultAdminPassword

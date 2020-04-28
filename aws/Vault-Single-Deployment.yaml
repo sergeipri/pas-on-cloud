@@ -1,7 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: >-
-  This template handles the deployment of CyberArk Primary Vault to an existing network
-  infrastructure
+Description: This template handles the deployment of CyberArk Primary Vault to an existing network infrastructure
 Resources:
   LogGroup:
     Type: 'AWS::Logs::LogGroup'
@@ -506,7 +504,7 @@ Parameters:
       key.
   LicenseFile:
     Type: String
-    Description: Enter the path of the license file within the bucket.
+    Description: Enter the path of the Vault license file within the bucket.
     Default: license.xml
   RecoveryPublicKey:
     Type: String
@@ -514,7 +512,7 @@ Parameters:
     Default: recpub.key
   VaultMasterPassword:
     Type: String
-    Description: Enter a password for the Vault Master user.
+    Description: Enter a password for the Primary Vault Master user.
     NoEcho: true
     MinLength: 8
     AllowedPattern: >-
@@ -598,9 +596,12 @@ Metadata:
           - RetypeAdminPassword
           - VaultMasterPassword
           - RetypeMasterPassword
+      - Label:
+          default: Primary Vault Machine Information
+        Parameters:
           - VaultInstanceName
-          - VaultHostName
           - VaultInstanceType
+          - VaultHostName
           - VaultInstanceSecurityGroups
           - VaultInstanceSubnetId
     ParameterLabels:
@@ -609,25 +610,25 @@ Metadata:
       KeyName:
         default: Key Pair
       VaultFilesBucket:
-        default: Vault Files Bucket
+        default: S3 Bucket
       LicenseFile:
-        default: License File
+        default: Vault License File
       RecoveryPublicKey:
         default: Recovery Public Key
-      VaultMasterPassword:
-        default: Primary Vault Master Password
-      RetypeMasterPassword:
-        default: Retype Primary Vault Master Password
       VaultAdminPassword:
         default: Primary Vault Admin Password
       RetypeAdminPassword:
         default: Retype Primary Vault Admin Password
+      VaultMasterPassword:
+        default: Primary Vault Master Password
+      RetypeMasterPassword:
+        default: Retype Primary Vault Master Password
       VaultInstanceName:
         default: Primary Vault Instance Name
-      VaultHostName:
-        default: Primary Vault Host Name
       VaultInstanceType:
         default: Primary Vault Instance Type
+      VaultHostName:
+        default: Primary Vault Host Name
       VaultInstanceSecurityGroups:
         default: Primary Vault Instance Security Groups
       VaultInstanceSubnetId:
