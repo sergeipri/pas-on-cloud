@@ -148,6 +148,9 @@
                     "VaultAdminPassword": {
                         "value": "[parameters('Vault Admin Password')]"
                     },
+                    "AvailabilityZone": {
+                        "value": "[parameters('Availability Zone')]"
+                    },
                     "VaultPrivateIP": {
                         "value": "[parameters('Vault Private IP')]"
                     }
